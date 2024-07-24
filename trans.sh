@@ -64,27 +64,13 @@ add_community_repo() {
 # 有时网络问题下载失败，导致脚本中断
 # 因此需要重试
 apk() {
-    for i in $(seq 5); do
-        command apk "$@" && return
-        sleep 1
-    done
+    retry 5 command apk "$@"
 }
 
 # busybox 的 wget 没有重试功能
 wget() {
     echo "$@" | grep -o 'http[^ ]*' >&2
-    for i in $(seq 5); do
-        if command wget "$@"; then
-            return
-        else
-            ret=$?
-            # 错误，或者达到重试次数
-            if [ $i -eq 5 ]; then
-                return $ret
-            fi
-            sleep 1
-        fi
-    done
+    retry 5 command wget "$@"
 }
 
 is_have_cmd() {
@@ -101,6 +87,23 @@ is_have_cmd_on_disk() {
         fi
     done
     return 1
+}
+
+retry() {
+    max_try=$1
+    shift
+
+    for i in $(seq $max_try); do
+        if "$@"; then
+            return
+        else
+            ret=$?
+            if [ $i -ge $max_try ]; then
+                return $ret
+            fi
+            sleep 1
+        fi
+    done
 }
 
 download() {
@@ -153,15 +156,11 @@ download() {
     # --user-agent=Wget/1.21.1 \
 
     echo "$url"
-    for i in $(seq 5); do
-        stdbuf -oL -eL \
-            aria2c -x4 \
-            --allow-overwrite=true \
-            --summary-interval=0 \
-            --max-tries 1 \
-            $save $url && return
-        sleep 1
-    done
+    retry 5 stdbuf -oL -eL aria2c -x4 \
+        --allow-overwrite=true \
+        --summary-interval=0 \
+        --max-tries 1 \
+        $save "$url"
 }
 
 update_part() {
@@ -1057,7 +1056,6 @@ EOF
         if ! is_virt; then
             chroot $os_dir pacman -Syu --noconfirm linux-firmware
 
-            # amd microcode 包括在 linux-firmware 里面
             if [ "$(uname -m)" = x86_64 ]; then
                 cpu_vendor="$(get_cpu_vendor)"
                 case "$cpu_vendor" in
@@ -2263,10 +2261,31 @@ chroot_dnf() {
 chroot_apt_autoremove() {
     os_dir=$1
 
-    conf=$os_dir/etc/apt/apt.conf.d/01autoremove
-    sed -i.orig 's/VersionedKernelPackages/x/; s/NeverAutoRemove/x/' $conf
+    change_confs() {
+        action=$1
+
+        # 只有 16.04 有 01autoremove-kernels
+        # 16.04 结束支持后删除
+        for conf in 01autoremove 01autoremove-kernels; do
+            file=$os_dir/etc/apt/apt.conf.d/$conf
+            case "$action" in
+            change)
+                if [ -f $file ]; then
+                    sed -i.orig 's/VersionedKernelPackages/x/; s/NeverAutoRemove/x/' $file
+                fi
+                ;;
+            restore)
+                if [ -f $file.orig ]; then
+                    mv $file.orig $file
+                fi
+                ;;
+            esac
+        done
+    }
+
+    change_confs change
     DEBIAN_FRONTEND=noninteractive chroot $os_dir apt autoremove --purge -y
-    mv $conf.orig $conf
+    change_confs restore
 }
 
 del_default_user() {
@@ -2633,6 +2652,14 @@ EOF
             # 使用 autoremove
             chroot_apt_autoremove $os_dir
         fi
+
+        # 16.04 镜像用 ifupdown/networking 管理网络
+        # 要安装 resolveconf，不然 /etc/resolv.conf 为空
+        if [ "$releasever" = 16.04 ]; then
+            chroot $os_dir apt install -y resolvconf
+            ln -sf /run/resolvconf/resolv.conf $os_dir/etc/resolv.conf.orig
+        fi
+
         # 安装 bios 引导
         if ! is_efi; then
             chroot $os_dir grub-install /dev/$xda
