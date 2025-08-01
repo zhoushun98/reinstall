@@ -4,8 +4,7 @@
 
 set -eE
 confhome=https://raw.githubusercontent.com/zhoushun98/reinstall/main
-confhome_cn=https://cnb.cool/zhoushun98/reinstall/-/git/raw/main
-# confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/zhoushun98/reinstall/main
+confhome_cn=https://ghfast.top/https://raw.githubusercontent.com/zhoushun98/reinstall/main
 
 # 默认密码
 DEFAULT_PASSWORD=123@@@
@@ -81,7 +80,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        [--rdp-port   PORT]
                        [--add-driver INF_OR_DIR]
 
-Manual: https://github.com/zhoushun98/reinstall
+Manual: https://github.com/bin456789/reinstall
 
 EOF
     exit 1
@@ -1155,7 +1154,7 @@ Continue?
                 # https://www.itdog.cn/ping/ftp.cn.debian.org
                 mirror=mirrors.cloud.aliyuncs.com/debian
             else
-                mirror=deb.debian.org/debian # fastly
+                mirror=mirrors.cloud.aliyuncs.com/debian # fastly
             fi
             udeb_mirror=$mirror
             deb_mirror=$mirror
