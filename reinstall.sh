@@ -3,9 +3,9 @@
 # shellcheck disable=SC2086
 
 set -eE
-confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
-# confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
+confhome=https://raw.githubusercontent.com/zhoushun98/reinstall/main
+confhome_cn=https://cnb.cool/zhoushun98/reinstall/-/git/raw/main
+# confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/zhoushun98/reinstall/main
 
 # 默认密码
 DEFAULT_PASSWORD=123@@@
@@ -81,7 +81,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        [--rdp-port   PORT]
                        [--add-driver INF_OR_DIR]
 
-Manual: https://github.com/bin456789/reinstall
+Manual: https://github.com/zhoushun98/reinstall
 
 EOF
     exit 1
@@ -1141,8 +1141,8 @@ Continue?
                 # https://github.com/tuna/issues/issues/1999
                 # nju 也没同步
                 udeb_mirror=deb.freexian.com/extended-lts
-                deb_mirror=mirror.nju.edu.cn/debian-elts
-                initrd_mirror=mirror.nju.edu.cn/debian-archive/debian
+                deb_mirror=mirrors.cloud.aliyuncs.com/debian-elts
+                initrd_mirror=mirrors.cloud.aliyuncs.com/debian-archive/debian
             else
                 # 按道理不应该用官方源，但找不到其他源
                 udeb_mirror=deb.freexian.com/extended-lts
@@ -1153,7 +1153,7 @@ Continue?
             if is_in_china; then
                 # ftp.cn.debian.org 不在国内还严重丢包
                 # https://www.itdog.cn/ping/ftp.cn.debian.org
-                mirror=mirror.nju.edu.cn/debian
+                mirror=mirrors.cloud.aliyuncs.com/debian
             else
                 mirror=deb.debian.org/debian # fastly
             fi
@@ -1164,7 +1164,7 @@ Continue?
 
         # 云镜像和 firmware 下载源
         if is_in_china; then
-            cdimage_mirror=https://mirror.nju.edu.cn/debian-cdimage
+            cdimage_mirror=https://mirrors.cloud.aliyuncs.com/debian-cdimage
         else
             cdimage_mirror=https://cdimage.debian.org/images # 在瑞典，不是 cdn
             # cloud.debian.org 同样在瑞典，不是 cdn
