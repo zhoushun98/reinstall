@@ -1140,8 +1140,8 @@ Continue?
                 # https://github.com/tuna/issues/issues/1999
                 # nju 也没同步
                 udeb_mirror=deb.freexian.com/extended-lts
-                deb_mirror=mirrors.cloud.aliyuncs.com/debian-elts
-                initrd_mirror=mirrors.cloud.aliyuncs.com/debian-archive/debian
+                deb_mirror=mirrors.tencentyun.com/debian-elts
+                initrd_mirror=mirrors.tencentyun.com/debian-archive/debian
             else
                 # 按道理不应该用官方源，但找不到其他源
                 udeb_mirror=deb.freexian.com/extended-lts
@@ -1152,9 +1152,9 @@ Continue?
             if is_in_china; then
                 # ftp.cn.debian.org 不在国内还严重丢包
                 # https://www.itdog.cn/ping/ftp.cn.debian.org
-                mirror=mirrors.cloud.aliyuncs.com/debian
+                mirror=mirrors.tencentyun.com/debian
             else
-                mirror=mirrors.cloud.aliyuncs.com/debian # fastly
+                mirror=mirrors.tencentyun.com/debian # fastly
             fi
             udeb_mirror=$mirror
             deb_mirror=$mirror
@@ -1163,7 +1163,7 @@ Continue?
 
         # 云镜像和 firmware 下载源
         if is_in_china; then
-            cdimage_mirror=https://mirrors.cloud.aliyuncs.com/debian-cdimage
+            cdimage_mirror=https://mirrors.tencentyun.com/debian-cdimage
         else
             cdimage_mirror=https://cdimage.debian.org/images # 在瑞典，不是 cdn
             # cloud.debian.org 同样在瑞典，不是 cdn
