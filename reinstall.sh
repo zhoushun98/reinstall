@@ -1179,7 +1179,7 @@ setos() {
 
         # 不要用https 因为甲骨文云arm initramfs阶段不会从硬件同步时钟，导致访问https出错
         if is_in_china; then
-            mirror=http://mirror.nju.edu.cn/alpine/v$releasever
+            mirror=http://mirrors.cloud.aliyuncs.com/alpine/v$releasever
         else
             mirror=http://dl-cdn.alpinelinux.org/alpine/v$releasever
         fi
@@ -1233,8 +1233,8 @@ Continue?
                 # https://github.com/tuna/issues/issues/1999
                 # nju 也没同步
                 udeb_mirror=deb.freexian.com/extended-lts
-                deb_mirror=mirror.nju.edu.cn/debian-elts
-                initrd_mirror=mirror.nju.edu.cn/debian-archive/debian
+                deb_mirror=mirrors.cloud.aliyuncs.com/debian-elts
+                initrd_mirror=mirrors.cloud.aliyuncs.com/debian-archive/debian
             else
                 # 按道理不应该用官方源，但找不到其他源
                 udeb_mirror=deb.freexian.com/extended-lts
@@ -1245,9 +1245,9 @@ Continue?
             if is_in_china; then
                 # ftp.cn.debian.org 不在国内还严重丢包
                 # https://www.itdog.cn/ping/ftp.cn.debian.org
-                mirror=mirror.nju.edu.cn/debian
+                mirror=mirrors.cloud.aliyuncs.com/debian
             else
-                mirror=deb.debian.org/debian # fastly
+                mirror=mirrors.cloud.aliyuncs.com/debian # fastly
             fi
             udeb_mirror=$mirror
             deb_mirror=$mirror
@@ -1256,7 +1256,7 @@ Continue?
 
         # 云镜像和 firmware 下载源
         if is_in_china; then
-            cdimage_mirror=https://mirror.nju.edu.cn/debian-cdimage
+            cdimage_mirror=https://mirrors.cloud.aliyuncs.com/debian-cdimage
         else
             cdimage_mirror=https://cdimage.debian.org/images # 在瑞典，不是 cdn
             # cloud.debian.org 同样在瑞典，不是 cdn
@@ -1302,7 +1302,7 @@ Continue?
         else
             # 传统安装
             if is_in_china; then
-                hostname=mirror.nju.edu.cn
+                hostname=mirrors.cloud.aliyuncs.com
             else
                 # http.kali.org 没有 ipv6 地址
                 # http.kali.org (geoip 重定向) 到 kali.download (cf)
@@ -1340,10 +1340,10 @@ Continue?
                 # 有的源没有 releases 镜像
                 # https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/releases/
                 #   https://unicom.mirrors.ustc.edu.cn/ubuntu-cloud-images/releases/
-                #            https://mirror.nju.edu.cn/ubuntu-cloud-images/releases/
+                #            https://mirrors.cloud.aliyuncs.com/ubuntu-cloud-images/releases/
 
                 # mirrors.cloud.tencent.com
-                ci_mirror=https://mirror.nju.edu.cn/ubuntu-cloud-images
+                ci_mirror=https://mirrors.cloud.aliyuncs.com/ubuntu-cloud-images
             else
                 ci_mirror=https://cloud-images.ubuntu.com
             fi
@@ -1378,8 +1378,8 @@ Continue?
             # 传统安装
             if is_in_china; then
                 case "$basearch" in
-                "x86_64") mirror=https://mirror.nju.edu.cn/ubuntu-releases/$releasever ;;
-                "aarch64") mirror=https://mirror.nju.edu.cn/ubuntu-cdimage/releases/$releasever/release ;;
+                "x86_64") mirror=https://mirrors.cloud.aliyuncs.com/ubuntu-releases/$releasever ;;
+                "aarch64") mirror=https://mirrors.cloud.aliyuncs.com/ubuntu-cdimage/releases/$releasever/release ;;
                 esac
             else
                 case "$basearch" in
@@ -1405,13 +1405,13 @@ Continue?
     setos_arch() {
         if [ "$basearch" = "x86_64" ]; then
             if is_in_china; then
-                mirror=https://mirror.nju.edu.cn/archlinux
+                mirror=https://mirrors.cloud.aliyuncs.com/archlinux
             else
                 mirror=https://geo.mirror.pkgbuild.com # geoip
             fi
         else
             if is_in_china; then
-                mirror=https://mirror.nju.edu.cn/archlinuxarm
+                mirror=https://mirrors.cloud.aliyuncs.com/archlinuxarm
             else
                 # https 证书有问题
                 mirror=http://mirror.archlinuxarm.org # geoip
@@ -1434,7 +1434,7 @@ Continue?
 
     setos_nixos() {
         if is_in_china; then
-            mirror=https://mirror.nju.edu.cn/nix-channels
+            mirror=https://mirrors.cloud.aliyuncs.com/nix-channels
         else
             mirror=https://nixos.org/channels
         fi
@@ -1452,7 +1452,7 @@ Continue?
 
     setos_gentoo() {
         if is_in_china; then
-            mirror=https://mirror.nju.edu.cn/gentoo
+            mirror=https://mirrors.cloud.aliyuncs.com/gentoo
         else
             mirror=https://distfiles.gentoo.org # cdn77
         fi
@@ -1489,7 +1489,7 @@ Continue?
         # https://mirrors.tuna.tsinghua.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
 
         if is_in_china; then
-            mirror=https://mirror.nju.edu.cn/opensuse
+            mirror=https://mirrors.cloud.aliyuncs.com/opensuse
         else
             mirror=https://downloadcontentcdn.opensuse.org
         fi
@@ -1680,7 +1680,7 @@ Continue with DD?
 
     setos_aosc() {
         if is_in_china; then
-            mirror=https://mirror.nju.edu.cn/anthon/aosc-os
+            mirror=https://mirrors.cloud.aliyuncs.com/anthon/aosc-os
         else
             # 服务器在香港
             mirror=https://releases.aosc.io
@@ -1713,10 +1713,10 @@ Continue with DD?
             # ci
             if is_in_china; then
                 case $distro in
-                centos) ci_mirror="https://mirror.nju.edu.cn/centos-cloud/centos" ;;
-                almalinux) ci_mirror="https://mirror.nju.edu.cn/almalinux/$releasever/cloud/$elarch/images" ;;
-                rocky) ci_mirror="https://mirror.nju.edu.cn/rocky/$releasever/images/$elarch" ;;
-                fedora) ci_mirror="https://mirror.nju.edu.cn/fedora/releases/$releasever/Cloud/$elarch/images" ;;
+                centos) ci_mirror="https://mirrors.cloud.aliyuncs.com/centos-cloud/centos" ;;
+                almalinux) ci_mirror="https://mirrors.cloud.aliyuncs.com/almalinux/$releasever/cloud/$elarch/images" ;;
+                rocky) ci_mirror="https://mirrors.cloud.aliyuncs.com/rocky/$releasever/images/$elarch" ;;
+                fedora) ci_mirror="https://mirrors.cloud.aliyuncs.com/fedora/releases/$releasever/Cloud/$elarch/images" ;;
                 esac
             else
                 case $distro in
@@ -2869,7 +2869,7 @@ install_grub_linux_efi() {
         fedora_ver=$(get_latest_distro_releasever fedora)
 
         if is_in_china; then
-            mirror=https://mirror.nju.edu.cn/fedora
+            mirror=https://mirrors.cloud.aliyuncs.com/fedora
         else
             mirror=https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux
         fi
@@ -2877,7 +2877,7 @@ install_grub_linux_efi() {
         curl -Lo $tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
     else
         if is_in_china; then
-            mirror=https://mirror.nju.edu.cn/opensuse
+            mirror=https://mirrors.cloud.aliyuncs.com/opensuse
         else
             mirror=https://downloadcontentcdn.opensuse.org
         fi
@@ -2896,7 +2896,7 @@ download_and_extract_apk() {
     local extract_dir=$3
 
     install_pkg tar xz
-    is_in_china && mirror=http://mirror.nju.edu.cn/alpine || mirror=https://dl-cdn.alpinelinux.org/alpine
+    is_in_china && mirror=http://mirrors.cloud.aliyuncs.com/alpine || mirror=https://dl-cdn.alpinelinux.org/alpine
     package_apk=$(curl -L $mirror/v$alpine_ver/main/$basearch/ | grep -oP "$package-[^-]*-[^-]*\.apk" | sort -u)
     if ! [ "$(wc -l <<<"$package_apk")" -eq 1 ]; then
         error_and_exit "find no/multi apks."
@@ -2914,7 +2914,7 @@ install_grub_win() {
     grub_ver=2.06
     # ftpmirror.gnu.org 是 geoip 重定向，不是 cdn
     # 有可能重定义到一个拉黑了部分 IP 的服务器
-    is_in_china && grub_url=https://mirror.nju.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
+    is_in_china && grub_url=https://mirrors.cloud.aliyuncs.com/gnu/grub/grub-$grub_ver-for-windows.zip ||
         grub_url=https://mirrors.kernel.org/gnu/grub/grub-$grub_ver-for-windows.zip
     curl -Lo $tmp/grub.zip $grub_url
     # unzip -qo $tmp/grub.zip
@@ -2967,7 +2967,7 @@ install_grub_win() {
         if false; then
             # g2ldr.mbr
             # 部分国内机无法访问 ftp.cn.debian.org
-            is_in_china && host=mirror.nju.edu.cn || host=deb.debian.org
+            is_in_china && host=mirrors.cloud.aliyuncs.com || host=mirrors.cloud.aliyuncs.com
             curl -LO http://$host/debian/tools/win32-loader/stable/win32-loader.exe
             7z x win32-loader.exe 'g2ldr.mbr' -o$tmp/win32-loader -r -y -bso0
             find $tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
@@ -3286,9 +3286,9 @@ EOF
 
     # https://github.com/linuxhw/LsPCI?tab=readme-ov-file#storageata-pci
     # https://debian.pkgs.org/12/debian-main-amd64/linux-image-6.1.0-18-cloud-amd64_6.1.76-1_amd64.deb.html
-    # https://deb.debian.org/debian/pool/main/l/linux-signed-amd64/
-    # https://deb.debian.org/debian/dists/bookworm/main/debian-installer/binary-all/Packages.xz
-    # https://deb.debian.org/debian/dists/bookworm/main/debian-installer/binary-amd64/Packages.xz
+    # https://mirrors.cloud.aliyuncs.com/debian/pool/main/l/linux-signed-amd64/
+    # https://mirrors.cloud.aliyuncs.com/debian/dists/bookworm/main/debian-installer/binary-all/Packages.xz
+    # https://mirrors.cloud.aliyuncs.com/debian/dists/bookworm/main/debian-installer/binary-amd64/Packages.xz
     # 以下是 debian-installer 有的驱动，这些驱动云内核不一定都有，(+)表示云内核有
     # scsi-core-modules 默认安装（不用修改），是 ata-modules 的依赖
     #                   包含 sd_mod.ko(+) scsi_mod.ko(+) scsi_transport_fc.ko(+) scsi_transport_sas.ko(+) scsi_transport_spi.ko(+)
@@ -3428,7 +3428,7 @@ EOF
         # xen 还需要以下两个？
         # kernel/drivers/xen/xen-scsiback.ko
         # kernel/drivers/block/xen-blkback/xen-blkback.ko
-        # 但反查也找不到 curl https://deb.debian.org/debian/dists/bookworm/main/Contents-udeb-amd64.gz | zcat | grep xen
+        # 但反查也找不到 curl https://mirrors.cloud.aliyuncs.com/debian/dists/bookworm/main/Contents-udeb-amd64.gz | zcat | grep xen
         if [ -n "$extra_drivers" ]; then
             mkdir_clear $tmp/scsi
             download_and_extract_deb udeb scsi-modules-$kver-di $tmp/scsi
