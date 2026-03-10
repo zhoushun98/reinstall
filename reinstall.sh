@@ -6,8 +6,8 @@
 # alpine 默认没有 bash，因此 shebang 用 sh，再 exec 切换到 bash
 
 set -eE
-confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
+confhome=https://raw.githubusercontent.com/zhoushun98/reinstall/main
+confhome_cn=https://cnb.cool/bin456789/zhoushun98/-/git/raw/main
 # confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
@@ -2784,6 +2784,16 @@ collect_netconf() {
         done
     fi
 
+    # 仅在 Debian 安装时，允许通过参数覆盖 IPv4 地址/网关
+    if [ "$distro" = debian ]; then
+        if [ -n "$user_ipv4_addr" ]; then
+            ipv4_addr=$user_ipv4_addr
+        fi
+        if [ -n "$user_ipv4_gateway" ]; then
+            ipv4_gateway=$user_ipv4_gateway
+        fi
+    fi
+
     if ! is_found_ipv4_netconf && ! is_found_ipv6_netconf; then
         error_and_exit "Can not get IP info."
     fi
@@ -4327,6 +4337,8 @@ long_opts=
 for o in ci installer debug minimal allow-ping force-cn help \
     add-driver: \
     hold: sleep: \
+    ip4-addr: \
+    ip4-gateway: \
     iso: \
     image-name: \
     boot-wim: \
@@ -4595,6 +4607,22 @@ EOF
         ;;
     --force-old-windows-setup)
         force_old_windows_setup=$2
+        shift 2
+        ;;
+    --ip4-addr)
+        # 仅在 Debian 安装时生效
+        if [ "$distro" = debian ]; then
+            [ -n "$2" ] || error_and_exit "Need value for $1"
+            user_ipv4_addr=$2
+        fi
+        shift 2
+        ;;
+    --ip4-gateway)
+        # 仅在 Debian 安装时生效
+        if [ "$distro" = debian ]; then
+            [ -n "$2" ] || error_and_exit "Need value for $1"
+            user_ipv4_gateway=$2
+        fi
         shift 2
         ;;
     --target-disk)
