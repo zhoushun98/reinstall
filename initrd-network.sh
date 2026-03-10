@@ -139,11 +139,11 @@ is_have_ipv6_dns() {
 
 add_missing_ipv4_config() {
     if [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
-        if ! is_have_ipv4_addr; then
+        # FORCE_IPV4_STATIC=1 时（Debian 安装 + 用户传入静态 IP），强制覆盖 DHCP 配置
+        if [ "$FORCE_IPV4_STATIC" = 1 ]; then
+            ip -4 addr flush dev "$ethx" 2>/dev/null || true
+            ip -4 route flush dev "$ethx" 2>/dev/null || true
             ip -4 addr add "$ipv4_addr" dev "$ethx"
-        fi
-
-        if ! is_have_ipv4_gateway; then
             # 如果 dhcp 无法设置onlink网关，那么在这里设置
             # debian 9 ipv6 不能识别 onlink，但 ipv4 能识别 onlink
             if true; then
@@ -151,6 +151,21 @@ add_missing_ipv4_config() {
                 ip -4 route add default via "$ipv4_gateway" dev "$ethx"
             else
                 ip -4 route add default via "$ipv4_gateway" dev "$ethx" onlink
+            fi
+        else
+            if ! is_have_ipv4_addr; then
+                ip -4 addr add "$ipv4_addr" dev "$ethx"
+            fi
+
+            if ! is_have_ipv4_gateway; then
+                # 如果 dhcp 无法设置onlink网关，那么在这里设置
+                # debian 9 ipv6 不能识别 onlink，但 ipv4 能识别 onlink
+                if true; then
+                    ip -4 route add "$ipv4_gateway" dev "$ethx"
+                    ip -4 route add default via "$ipv4_gateway" dev "$ethx"
+                else
+                    ip -4 route add default via "$ipv4_gateway" dev "$ethx" onlink
+                fi
             fi
         fi
     fi

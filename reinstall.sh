@@ -3723,11 +3723,18 @@ get_ip_conf_cmd() {
     is_in_china && is_in_china=true || is_in_china=false
 
     sh=/initrd-network.sh
+    # Debian + 用户指定 IPv4 时，强制在 initrd 里覆盖 DHCP
+    if [ "$distro" = debian ] && [ -n "$user_ipv4_addr" ] && [ -n "$user_ipv4_gateway" ]; then
+        force_ipv4_static_prefix='FORCE_IPV4_STATIC=1 '
+    else
+        force_ipv4_static_prefix=
+    fi
+
     if is_found_ipv4_netconf && is_found_ipv6_netconf && [ "$ipv4_mac" = "$ipv6_mac" ]; then
-        echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china' '$ipv6_extra_addrs'"
+        echo "${force_ipv4_static_prefix}'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china' '$ipv6_extra_addrs'"
     else
         if is_found_ipv4_netconf; then
-            echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '' '' '$is_in_china' ''"
+            echo "${force_ipv4_static_prefix}'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '' '' '$is_in_china' ''"
         fi
         if is_found_ipv6_netconf; then
             echo "'$sh' '$ipv6_mac' '' '' '$ipv6_addr' '$ipv6_gateway' '$is_in_china' '$ipv6_extra_addrs'"
