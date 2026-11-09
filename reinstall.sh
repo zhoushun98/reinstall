@@ -6,9 +6,9 @@
 # alpine 默认没有 bash，因此 shebang 用 sh，再 exec 切换到 bash
 
 set -eE
-confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
-# confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
+confhome=https://raw.githubusercontent.com/zhoushun98/reinstall/custom
+# confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
+confhome_cn=https://v4.gh-proxy.org/https://raw.githubusercontent.com/zhoushun98/reinstall/custom
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0005
@@ -118,8 +118,14 @@ Usage: $reinstall_____ anolis      7|8|23
                        [--add-driver  INF_OR_DIR]  (only for iso installation)
                        [--no-auto-drivers]         (only for iso installation)
 
+                       For Linux/Windows (network):
+                       [--ip          IP/CIDR]     (IPv4 or IPv6, use static IP)
+                       [--gateway     GATEWAY]
+                       [--dns         DNS]
+
                        For Linux Only:
                        [--no-cloud-kernel]         (only for Debian/Ubuntu/Alpine/openSUSE)
+                       [--mirror      URL]         (repository root of the target distro)
 
        Manual:         https://github.com/bin456789/reinstall
 
@@ -338,6 +344,28 @@ is_digit() {
 
 is_port_valid() {
     is_digit "$1" && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+
+is_valid_ipv4() {
+    local IFS=. part
+    [[ "$1" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || return 1
+    for part in $1; do
+        [ "$part" -le 255 ] || return 1
+    done
+}
+
+# 只做简单检查
+is_valid_ipv6() {
+    [[ "$1" = *:*:* ]] && [[ "$1" =~ ^[0-9a-fA-F:]+$ ]]
+}
+
+# 192.168.1.2/24 2001:db8::2/64
+is_valid_ip_with_cidr() {
+    local addr=${1%/*}
+    local cidr=${1#*/}
+    [[ "$1" = */* ]] && is_digit "$cidr" && [ "$cidr" -ge 1 ] &&
+        { { is_valid_ipv4 "$addr" && [ "$cidr" -le 32 ]; } ||
+            { is_valid_ipv6 "$addr" && [ "$cidr" -le 128 ]; }; }
 }
 
 get_host_by_url() {
@@ -1456,6 +1484,13 @@ set_var() {
 }
 
 setos() {
+    # --mirror 只作用于目标系统，不作用于两步安装时作为中间系统的 alpine
+    # 要在 local distro=$2 覆盖全局 $distro 之前判断
+    local use_custom_mirror=false
+    if [ -n "$custom_mirror" ] && [ "$2" = "$distro" ]; then
+        use_custom_mirror=true
+    fi
+
     local step=$1
     local distro=$2
     local releasever=$3
@@ -1463,6 +1498,15 @@ setos() {
 
     set_osvar() {
         set_var "${step}_$1" "$2"
+    }
+
+    is_use_custom_mirror() {
+        $use_custom_mirror
+    }
+
+    # 去掉 http:// https://
+    get_custom_mirror_without_scheme() {
+        echo "$custom_mirror" | sed -E 's,^[a-zA-Z]+://,,'
     }
 
     setos_netboot.xyz() {
@@ -1481,7 +1525,9 @@ setos() {
         is_virt && flavour=virt || flavour=lts
 
         # 不要用https 因为甲骨文云arm initramfs阶段不会从硬件同步时钟，导致访问https出错
-        if is_in_china; then
+        if is_use_custom_mirror; then
+            mirror=$custom_mirror/v$releasever
+        elif is_in_china; then
             mirror=http://mirror.nju.edu.cn/alpine/v$releasever
         else
             mirror=http://dl-cdn.alpinelinux.org/alpine/v$releasever
@@ -1529,6 +1575,8 @@ Continue?
             fi
         fi
 
+        initrd_scheme=https
+
         # udeb_mirror 安装时的源
         # deb_mirror 安装后要修改成的源
         if is_debian_elts; then
@@ -1544,8 +1592,16 @@ Continue?
                 deb_mirror=deb.freexian.com/extended-lts
                 initrd_mirror=archive.debian.org/debian
             fi
+            # 镜像站一般不同步 elts 的安装器文件，因此只修改安装后的源
+            if is_use_custom_mirror; then
+                deb_mirror=$(get_custom_mirror_without_scheme)
+            fi
         else
-            if is_in_china; then
+            if is_use_custom_mirror; then
+                mirror=$(get_custom_mirror_without_scheme)
+                # 使用用户指定的协议下载内核和 initrd
+                initrd_scheme=${custom_mirror%%://*}
+            elif is_in_china; then
                 # ftp.cn.debian.org 不在国内还严重丢包
                 # https://www.itdog.cn/ping/ftp.cn.debian.org
                 mirror=mirror.nju.edu.cn/debian
@@ -1598,8 +1654,8 @@ Continue?
             initrd_dir=dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
 
             set_osvar udeb_mirror "$udeb_mirror"
-            set_osvar vmlinuz "https://$initrd_mirror/$initrd_dir/linux"
-            set_osvar initrd "https://$initrd_mirror/$initrd_dir/initrd.gz"
+            set_osvar vmlinuz "$initrd_scheme://$initrd_mirror/$initrd_dir/linux"
+            set_osvar initrd "$initrd_scheme://$initrd_mirror/$initrd_dir/initrd.gz"
             set_osvar ks "$confhome/debian.cfg"
             set_osvar firmware "$cdimage_mirror/unofficial/non-free/firmware/$codename/current/firmware.cpio.gz"
             set_osvar codename "$codename"
@@ -1615,7 +1671,10 @@ Continue?
             :
         else
             # 传统安装
-            if is_in_china; then
+            if is_use_custom_mirror; then
+                # 用户填的是 xxx/kali
+                hostname=$(get_custom_mirror_without_scheme | sed 's,/kali$,,')
+            elif is_in_china; then
                 hostname=mirror.nju.edu.cn
             else
                 # http.kali.org (geoip 重定向) 到 kali.download (cf) 或最近的站点
@@ -1689,6 +1748,10 @@ Continue?
                 fi
             fi
             set_osvar img "$img"
+            # 安装后修改成的源
+            if is_use_custom_mirror; then
+                set_osvar apt_mirror "$custom_mirror"
+            fi
         else
             # 传统安装
             if is_in_china; then
@@ -1719,7 +1782,9 @@ Continue?
 
     setos_arch() {
         if [ "$basearch" = "x86_64" ]; then
-            if is_in_china; then
+            if is_use_custom_mirror; then
+                mirror=$custom_mirror
+            elif is_in_china; then
                 mirror=https://mirror.nju.edu.cn/archlinux
             else
                 # https://archlinux.org/mirrorlist/all/   # 镜像源列表
@@ -1727,7 +1792,9 @@ Continue?
                 mirror=https://fastly.mirror.pkgbuild.com # cdn
             fi
         else
-            if is_in_china; then
+            if is_use_custom_mirror; then
+                mirror=$custom_mirror
+            elif is_in_china; then
                 mirror=https://mirror.nju.edu.cn/archlinuxarm
             else
                 # https 证书有问题
@@ -1753,7 +1820,9 @@ Continue?
     }
 
     setos_nixos() {
-        if is_in_china; then
+        if is_use_custom_mirror; then
+            mirror=$custom_mirror
+        elif is_in_china; then
             mirror=https://mirror.nju.edu.cn/nix-channels
         else
             # https://nixos.org/channels 没有 ipv6
@@ -1773,7 +1842,9 @@ Continue?
     }
 
     setos_gentoo() {
-        if is_in_china; then
+        if is_use_custom_mirror; then
+            mirror=$custom_mirror
+        elif is_in_china; then
             mirror=https://mirror.nju.edu.cn/gentoo
         else
             mirror=https://distfiles.gentoo.org # cdn77
@@ -1814,7 +1885,9 @@ Continue?
         # https://mirrors.tuna.tsinghua.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
 
         if [ -z "$img" ]; then
-            if is_in_china; then
+            if is_use_custom_mirror; then
+                mirror=$custom_mirror
+            elif is_in_china; then
                 mirror=https://mirror.nju.edu.cn/opensuse
             else
                 mirror=https://downloadcontentcdn.opensuse.org
@@ -2028,7 +2101,9 @@ Continue with DD?
 
     setos_aosc() {
         if [ -z "$img" ]; then
-            if is_in_china; then
+            if is_use_custom_mirror; then
+                mirror=$custom_mirror
+            elif is_in_china; then
                 mirror=https://mirror.nju.edu.cn/anthon/aosc-os
             else
                 # 服务器在香港
@@ -2062,7 +2137,13 @@ Continue with DD?
         if is_use_cloud_image; then
             # ci
             if [ -z "$img" ]; then
-                if is_in_china; then
+                if is_use_custom_mirror; then
+                    case $distro in
+                    almalinux) ci_mirror="$custom_mirror/$releasever/cloud/$elarch/images" ;;
+                    rocky) ci_mirror="$custom_mirror/$releasever/images/$elarch" ;;
+                    fedora) ci_mirror="$custom_mirror/releases/$releasever/Cloud/$elarch/images" ;;
+                    esac
+                elif is_in_china; then
                     case $distro in
                     centos) ci_mirror="https://mirror.nju.edu.cn/centos-cloud/centos" ;;
                     almalinux) ci_mirror="https://mirror.nju.edu.cn/almalinux/$releasever/cloud/$elarch/images" ;;
@@ -2206,7 +2287,11 @@ Continue with DD?
     }
 
     setos_anolis() {
-        mirror=https://mirrors.openanolis.cn/anolis
+        if is_use_custom_mirror; then
+            mirror=$custom_mirror
+        else
+            mirror=https://mirrors.openanolis.cn/anolis
+        fi
         if is_use_cloud_image; then
             # ci
             if [ -z "$img" ]; then
@@ -2225,7 +2310,9 @@ Continue with DD?
     }
 
     setos_openeuler() {
-        if is_in_china; then
+        if is_use_custom_mirror; then
+            mirror=$custom_mirror
+        elif is_in_china; then
             mirror=https://repo.openeuler.openatom.cn
         else
             mirror=https://repo.openeuler.org
@@ -3203,6 +3290,30 @@ collect_netconf() {
         done
     fi
 
+    # 用户通过 --ip --gateway 指定
+    # 网卡沿用自动检测的，如果该协议没有检测到网卡，则使用另一协议的网卡
+    for v in 4 6; do
+        [ "$v" = 4 ] && other=6 || other=4
+        addr_var=custom_ipv${v}_addr
+        gateway_var=custom_ipv${v}_gateway
+        if [ -n "${!addr_var}" ]; then
+            mac_var=ipv${v}_mac
+            if [ -z "${!mac_var}" ]; then
+                other_mac_var=ipv${other}_mac
+                other_ethx_var=ipv${other}_ethx
+                if [ -z "${!other_mac_var}" ]; then
+                    error_and_exit "Can not find network card for ${!addr_var}"
+                fi
+                set_var ipv${v}_mac "${!other_mac_var}"
+                set_var ipv${v}_ethx "${!other_ethx_var}"
+            fi
+            set_var ipv${v}_addr "${!addr_var}"
+            set_var ipv${v}_gateway "${!gateway_var}"
+            # 旧 IP 的附加地址不再适用
+            set_var ipv${v}_extra_addrs ""
+        fi
+    done
+
     if ! is_found_ipv4_netconf && ! is_found_ipv6_netconf; then
         error_and_exit "Can not get IP info."
     fi
@@ -3691,8 +3802,8 @@ build_nextos_cmdline() {
         nextos_cmdline="lowmem/low=1 auto=true priority=critical"
         # nextos_cmdline+=" vga=788 video=800x600"
         nextos_cmdline+=" url=$nextos_ks"
-        nextos_cmdline+=" mirror/http/hostname=${nextos_udeb_mirror%/*}"
-        nextos_cmdline+=" mirror/http/directory=/${nextos_udeb_mirror##*/}"
+        nextos_cmdline+=" mirror/http/hostname=${nextos_udeb_mirror%%/*}"
+        nextos_cmdline+=" mirror/http/directory=/${nextos_udeb_mirror#*/}"
         nextos_cmdline+=" base-installer/kernel/image=$nextos_kernel"
         # elts 的 debian 不能用 security 源，否则安装过程会提示无法访问
         if [ "$nextos_distro" = debian ] && is_debian_elts; then
@@ -4339,15 +4450,19 @@ get_ip_conf_cmd() {
     collect_netconf >&2
     is_in_china && is_in_china=true || is_in_china=false
 
+    # 用户指定了 IP 则强制使用静态 IP
+    [ -n "$custom_ipv4_addr" ] && force_static_ipv4=true || force_static_ipv4=false
+    [ -n "$custom_ipv6_addr" ] && force_static_ipv6=true || force_static_ipv6=false
+
     sh=/initrd-network.sh
     if is_found_ipv4_netconf && is_found_ipv6_netconf && [ "$ipv4_mac" = "$ipv6_mac" ]; then
-        echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china' '$ipv6_extra_addrs'"
+        echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china' '$ipv6_extra_addrs' '$force_static_ipv4' '$force_static_ipv6' '$custom_ipv4_dns' '$custom_ipv6_dns'"
     else
         if is_found_ipv4_netconf; then
-            echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '' '' '$is_in_china' ''"
+            echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '' '' '$is_in_china' '' '$force_static_ipv4' 'false' '$custom_ipv4_dns' ''"
         fi
         if is_found_ipv6_netconf; then
-            echo "'$sh' '$ipv6_mac' '' '' '$ipv6_addr' '$ipv6_gateway' '$is_in_china' '$ipv6_extra_addrs'"
+            echo "'$sh' '$ipv6_mac' '' '' '$ipv6_addr' '$ipv6_gateway' '$is_in_china' '$ipv6_extra_addrs' 'false' '$force_static_ipv6' '' '$custom_ipv6_dns'"
         fi
     fi
 }
@@ -4989,6 +5104,8 @@ for o in ci installer debug minimal no-cloud-kernel no-auto-drivers allow-ping f
     web-port: http-port: \
     allow-ping: \
     commit: \
+    mirror: \
+    ip: gateway: dns: \
     frpc-conf: frpc-config: \
     target-disk: \
     force-boot-mode: \
@@ -5276,6 +5393,15 @@ EOF
         fi
         shift 2
         ;;
+    --mirror)
+        case "$(to_lower <<<"$2")" in
+        http://?* | https://?*) ;;
+        *) error_and_exit "Invalid $1 value: $2. Must start with http:// or https://" ;;
+        esac
+        # 删除末尾的 /
+        custom_mirror=$(echo "$2" | sed -E "s,/+\$,,")
+        shift 2
+        ;;
     --img)
         img=$2
         shift 2
@@ -5303,6 +5429,46 @@ EOF
         lang=$(echo "$2" | to_lower)
         shift 2
         ;;
+    --ip)
+        if ! is_valid_ip_with_cidr "$2"; then
+            error_and_exit "Invalid $1 value: $2. Example: 192.168.1.2/24 or 2001:db8::2/64"
+        fi
+        if [[ "$2" = *:* ]]; then
+            [ -z "$custom_ipv6_addr" ] || error_and_exit "Only one IPv6 address can be set."
+            custom_ipv6_addr=$2
+        else
+            [ -z "$custom_ipv4_addr" ] || error_and_exit "Only one IPv4 address can be set."
+            custom_ipv4_addr=$2
+        fi
+        shift 2
+        ;;
+    --gateway)
+        if is_valid_ipv4 "$2"; then
+            [ -z "$custom_ipv4_gateway" ] || error_and_exit "Only one IPv4 gateway can be set."
+            custom_ipv4_gateway=$2
+        elif is_valid_ipv6 "$2"; then
+            [ -z "$custom_ipv6_gateway" ] || error_and_exit "Only one IPv6 gateway can be set."
+            custom_ipv6_gateway=$2
+        else
+            error_and_exit "Invalid $1 value: $2"
+        fi
+        shift 2
+        ;;
+    --dns)
+        # 逗号分隔
+        if is_valid_ipv4 "$2"; then
+            [ "$(echo "$custom_ipv4_dns" | tr ',' '\n' | grep -c .)" -lt 2 ] ||
+                error_and_exit "Up to 2 IPv4 DNS servers can be set."
+            custom_ipv4_dns=${custom_ipv4_dns:+$custom_ipv4_dns,}$2
+        elif is_valid_ipv6 "$2"; then
+            [ "$(echo "$custom_ipv6_dns" | tr ',' '\n' | grep -c .)" -lt 2 ] ||
+                error_and_exit "Up to 2 IPv6 DNS servers can be set."
+            custom_ipv6_dns=${custom_ipv6_dns:+$custom_ipv6_dns,}$2
+        else
+            error_and_exit "Invalid $1 value: $2"
+        fi
+        shift 2
+        ;;
     --bit)
         if ! { [ "$2" = 32 ] || [ "$2" = 64 ]; }; then
             error_and_exit "Invalid $1 value: $2"
@@ -5323,6 +5489,18 @@ done
 
 # 检查必须的参数
 verify_os_args
+
+# --ip 和 --gateway 要成对出现
+for v in 4 6; do
+    addr_var=custom_ipv${v}_addr
+    gateway_var=custom_ipv${v}_gateway
+    if [ -n "${!addr_var}" ] && [ -z "${!gateway_var}" ]; then
+        error_and_exit "Need --gateway for IPv$v address: ${!addr_var}"
+    fi
+    if [ -z "${!addr_var}" ] && [ -n "${!gateway_var}" ]; then
+        error_and_exit "Need --ip for IPv$v gateway: ${!gateway_var}"
+    fi
+done
 
 # 用户名密码
 if ! is_netboot_xyz; then
@@ -5374,6 +5552,19 @@ redhat | centos | almalinux | rocky | fedora | ubuntu)
     fi
     ;;
 esac
+
+# 检查 --mirror 是否支持目标系统
+if [ -n "$custom_mirror" ]; then
+    case "$distro" in
+    alpine | debian | kali | arch | nixos | gentoo | opensuse | aosc | openeuler | anolis) ;;
+    ubuntu | almalinux | rocky | fedora)
+        if ! is_use_cloud_image; then
+            error_and_exit "--mirror is not supported for $distro installer. Remove --installer and try again."
+        fi
+        ;;
+    *) error_and_exit "--mirror is not supported for $distro." ;;
+    esac
+fi
 
 # 检查内存
 # 会用到 wmic，因此要在设置国内 confhome 后使用

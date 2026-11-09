@@ -13,6 +13,12 @@ ipv6_addr=$4
 ipv6_gateway=$5
 is_in_china=$6
 ipv6_extra_addrs=$7
+# 用户通过 --ip 指定了 IP 时为 true
+force_static_ipv4=${8:-false}
+force_static_ipv6=${9:-false}
+# 用户通过 --dns 指定的 DNS，逗号分隔
+ipv4_custom_dns=${10}
+ipv6_custom_dns=${11}
 
 DHCP_TIMEOUT=15
 DNS_FILE_TIMEOUT=5
@@ -411,14 +417,27 @@ flush_ipv6_dns() {
 should_add_ipv4_static_dns=false
 should_add_ipv6_static_dns=false
 
+# 不要把 --dns 的值赋给 ipv4_dns1/ipv4_dns2，因为它们也用于检测是否联网
 add_ipv4_static_dns() {
-    echo "nameserver $ipv4_dns1" >>/etc/resolv.conf
-    echo "nameserver $ipv4_dns2" >>/etc/resolv.conf
+    if [ -n "$ipv4_custom_dns" ]; then
+        for dns in $(echo "$ipv4_custom_dns" | sed "s/,/ /g"); do
+            echo "nameserver $dns" >>/etc/resolv.conf
+        done
+    else
+        echo "nameserver $ipv4_dns1" >>/etc/resolv.conf
+        echo "nameserver $ipv4_dns2" >>/etc/resolv.conf
+    fi
 }
 
 add_ipv6_static_dns() {
-    echo "nameserver $ipv6_dns1" >>/etc/resolv.conf
-    echo "nameserver $ipv6_dns2" >>/etc/resolv.conf
+    if [ -n "$ipv6_custom_dns" ]; then
+        for dns in $(echo "$ipv6_custom_dns" | sed "s/,/ /g"); do
+            echo "nameserver $dns" >>/etc/resolv.conf
+        done
+    else
+        echo "nameserver $ipv6_dns1" >>/etc/resolv.conf
+        echo "nameserver $ipv6_dns2" >>/etc/resolv.conf
+    fi
 }
 
 flush_ipv4_config() {
@@ -578,6 +597,19 @@ if $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
     flush_ipv6_config
 fi
 
+# 用户通过 --ip 指定了 IP，删除自动获取的配置，强制使用静态
+if $force_static_ipv4; then
+    log "Using static IPv4 from --ip: $ipv4_addr"
+    should_disable_dhcpv4=true
+    flush_ipv4_config
+fi
+if $force_static_ipv6; then
+    log "Using static IPv6 from --ip: $ipv6_addr"
+    should_disable_accept_ra=true
+    should_disable_autoconf=true
+    flush_ipv6_config
+fi
+
 # 设置静态地址，或者设置 debian 9 udhcpc 无法设置的网关
 add_missing_ipv4_config
 add_missing_ipv6_config
@@ -644,6 +676,20 @@ fi
 # 模拟自动获取的 DNS 不能用
 # echo 'nameserver 11.11.11.11' >/etc/resolv.conf
 
+# 用户通过 --dns 指定了 DNS，覆盖自动获取的 DNS
+if $ipv4_has_internet && [ -n "$ipv4_custom_dns" ]; then
+    should_add_ipv4_static_dns=true
+    log "Using IPv4 DNS from --dns: $ipv4_custom_dns"
+    flush_ipv4_dns
+    add_ipv4_static_dns
+fi
+if $ipv6_has_internet && [ -n "$ipv6_custom_dns" ]; then
+    should_add_ipv6_static_dns=true
+    log "Using IPv6 DNS from --dns: $ipv6_custom_dns"
+    flush_ipv6_dns
+    add_ipv6_static_dns
+fi
+
 # 如果联网了，但没获取到默认 DNS，则添加我们的 DNS
 
 # 有一种情况是，多网卡，且能上网的网卡先完成了这个脚本，不能上网的网卡后完成
@@ -664,7 +710,9 @@ fi
 test_internet full
 
 # 需要覆盖自动 DNS 的情况
-if $ipv4_has_internet && ! $ipv4_has_internet_with_dns && $dhcpv4; then
+if $ipv4_has_internet && ! $ipv4_has_internet_with_dns && [ -n "$ipv4_custom_dns" ]; then
+    log "IPv4 has internet. But DNS from --dns failed. Keep using it"
+elif $ipv4_has_internet && ! $ipv4_has_internet_with_dns && $dhcpv4; then
     should_add_ipv4_static_dns=true
     log "IPv4 has internet. But DNS failed. Overriding with static DNS"
     flush_ipv4_dns
@@ -673,7 +721,9 @@ if $ipv4_has_internet && ! $ipv4_has_internet_with_dns && $dhcpv4; then
     # 再次测试完整的互联网连接
     test_internet full
 fi
-if $ipv6_has_internet && ! $ipv6_has_internet_with_dns && $dhcpv6_or_slaac; then
+if $ipv6_has_internet && ! $ipv6_has_internet_with_dns && [ -n "$ipv6_custom_dns" ]; then
+    log "IPv6 has internet. But DNS from --dns failed. Keep using it"
+elif $ipv6_has_internet && ! $ipv6_has_internet_with_dns && $dhcpv6_or_slaac; then
     should_add_ipv6_static_dns=true
     log "IPv6 has internet. But DNS failed. Overriding with static DNS"
     flush_ipv6_dns

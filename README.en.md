@@ -189,7 +189,9 @@ bash reinstall.sh anolis      7|8|23
 - `--ssh-port PORT` Change the SSH port
 - `--web-port PORT` Change the Web port (for log observation during installation only)
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
+- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` Set network manually, [formatted as follows](#--ip---gateway---dns)
 - `--no-cloud-kernel` Avoid using cloud kernel to prevent black or glitch screens on certain machines; applicable to Debian, Ubuntu, Alpine and openSUSE.
+- `--mirror URL` Set the repository of the target system, [formatted as follows](#--mirror)
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Prevent reboot after installation completes, allowing SSH login to modify system content; the system is mounted at `/target` for Debian/Kali and `/os` for other distros.
 
@@ -316,6 +318,7 @@ bash reinstall.sh alpine --hold 1
 - `--ssh-key KEY` Set up SSH login public key, [formatted as follows](#--ssh-key). When using public key, password is empty.
 - `--ssh-port PORT` Change SSH port
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
+- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` Set network manually, [formatted as follows](#--ip---gateway---dns)
 
 ### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -586,6 +589,7 @@ bash reinstall.sh windows \
   - This parameter can be set multiple times to add different driver.
 - `--no-auto-drivers` Prevent the script automatically download drivers. You need to use `--add-driver` to add the missing drivers.
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
+- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` Set network manually, [formatted as follows](#--ip---gateway---dns)
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Allow SSH connections for modifying `boot.wim`, `install.wim` or other contents before rebooting into the official Windows installation program, with the disk mounted at `/os`.
 
@@ -703,6 +707,49 @@ bash reinstall.sh reset
 - `--ssh-key gitlab:your_username` or `--ssh-key gl:your_username`
 - `--ssh-key /path/to/public_key`
 - `--ssh-key C:\path\to\public_key`
+
+### --mirror
+
+`--mirror URL` sets the repository of the target system. Use the root URL of the distro repository (same directory layout as the official one). It works both inside and outside China, and takes priority over the mirror chosen automatically by the script.
+
+It only applies to the target system itself. When installing a system other than Alpine, the script may reboot into Alpine first as an intermediate system, which still uses the automatically chosen mirror.
+
+| System | Example | Affects |
+| --- | --- | --- |
+| Alpine | `http://mirrors.ustc.edu.cn/alpine` | Installer + new system repo. http is recommended |
+| Debian | `https://mirrors.ustc.edu.cn/debian` | Installer + new system repo. Debian 9-11 (ELTS) only changes the new system repo |
+| Kali | `http://mirrors.ustc.edu.cn/kali` | Installer + new system repo |
+| Ubuntu | `https://mirrors.ustc.edu.cn/ubuntu` (`ubuntu-ports` for arm) | New system repo. `--installer` is not supported |
+| Arch | `https://mirrors.ustc.edu.cn/archlinux` (`archlinuxarm` for arm) | Installer + new system repo |
+| Gentoo | `https://mirrors.ustc.edu.cn/gentoo` | stage3 download + new system repo |
+| NixOS | `https://mirrors.ustc.edu.cn/nix-channels` | Channel download |
+| openSUSE | `https://mirrors.ustc.edu.cn/opensuse` | Image download |
+| AOSC OS | `https://mirrors.tuna.tsinghua.edu.cn/anthon/aosc-os` | Image download |
+| AlmaLinux / Rocky | `https://mirrors.ustc.edu.cn/rocky` | Image download. `--installer` is not supported |
+| Fedora | `https://mirrors.ustc.edu.cn/fedora` (the level containing `releases`) | Image download. `--installer` is not supported |
+| openEuler / Anolis | `https://mirrors.ustc.edu.cn/openeuler` | Image download |
+
+### --ip --gateway --dns
+
+By default, the script automatically detects the IP and gateway of the current system, and chooses DHCP or static IP in the installation environment and the new system. You can set them manually in these cases:
+
+- The address or gateway provided by the provider's DHCP/SLAAC is wrong or unstable
+- The DNS provided by the provider's DHCP is hijacked or unusable
+- The network config of the current system is wrong, so the detected values are wrong
+
+Parameters:
+
+- `--ip IP/CIDR` Set IP and netmask, e.g. `--ip 192.168.1.2/24` or `--ip 2001:db8::2/64`. One IPv4 and one IPv6 can be set, each with a `--gateway` of the same protocol. Both the installation environment and the new system will use static IP
+- `--gateway GATEWAY` Set gateway, e.g. `--gateway 192.168.1.1` or `--gateway fe80::1`
+- `--dns DNS` Set DNS. Can be used alone, in which case IP is still obtained by DHCP. Up to two each for IPv4 and IPv6, e.g. `--dns 1.1.1.1 --dns 8.8.8.8`
+
+```bash
+bash reinstall.sh debian 13 --ip 192.168.1.2/24 --gateway 192.168.1.1 --dns 1.1.1.1
+```
+
+> [!WARNING]
+>
+> Wrong values will cause loss of connection. Make sure you can rescue via the provider's VNC console. It is recommended to verify network connectivity with `--hold 1` first.
 
 ## How to Use an Old Version
 

@@ -5783,7 +5783,14 @@ EOF
         echo 'GRUB_DISABLE_OS_PROBER=true' >>$os_dir/etc/default/grub
 
         # 更改源
-        if is_in_china; then
+        if [ -n "$apt_mirror" ]; then
+            # 用户通过 --mirror 指定
+            for file in $os_dir/etc/apt/sources.list $os_dir/etc/apt/sources.list.d/ubuntu.sources; do
+                if [ -f $file ]; then
+                    sed -Ei "s,https?://(archive|ports)\.ubuntu\.com/ubuntu(-ports)?,$apt_mirror," $file
+                fi
+            done
+        elif is_in_china; then
             # 22.04 使用 /etc/apt/sources.list
             # 24.04 使用 /etc/apt/sources.list.d/ubuntu.sources
             for file in $os_dir/etc/apt/sources.list $os_dir/etc/apt/sources.list.d/ubuntu.sources; do
