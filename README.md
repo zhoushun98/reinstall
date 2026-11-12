@@ -189,7 +189,7 @@ bash reinstall.sh anolis      7|8|23
 - `--ssh-port PORT` 修改 SSH 端口
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
 - `--frpc-config PATH` 添加 frpc 内网穿透，参数填配置文件的本地路径或 HTTP 链接
-- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` 手动指定网络，[格式如下](#--ip---gateway---dns)
+- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` `--static` 手动指定网络，[格式如下](#--ip---gateway---dns)
 - `--no-cloud-kernel` 不使用云内核，避免部分机器黑屏/花屏，适用于 Debian、Ubuntu、Alpine、openSUSE
 - `--mirror URL` 指定目标系统的软件源，[格式如下](#--mirror)
 - `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
@@ -318,7 +318,7 @@ bash reinstall.sh alpine --hold 1
 - `--ssh-key KEY` 设置 SSH 登录公钥，[格式如下](#--ssh-key)。当使用公钥时，密码为空
 - `--ssh-port PORT` 修改 SSH 端口
 - `--frpc-config PATH` 添加 frpc 内网穿透，参数填配置文件的本地路径或 HTTP 链接
-- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` 手动指定网络，[格式如下](#--ip---gateway---dns)
+- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` `--static` 手动指定网络，[格式如下](#--ip---gateway---dns)
 
 ### 功能 4: 重启到 <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -589,7 +589,7 @@ bash reinstall.sh windows \
   - 可多次设置该参数以添加不同的驱动
 - `--no-auto-drivers` 禁止脚本自动下载驱动，你需要用 `--add-driver` 补全驱动
 - `--frpc-config PATH` 添加 frpc 内网穿透，参数填配置文件的本地路径或 HTTP 链接
-- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` 手动指定网络，[格式如下](#--ip---gateway---dns)
+- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` `--static` 手动指定网络，[格式如下](#--ip---gateway---dns)
 - `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
 - `--hold 2` 用于在进入 Windows 官方安装程序之前，SSH 登录修改 `boot.wim`、`install.wim` 或者其它内容，硬盘挂载在 `/os`
 
@@ -742,9 +742,11 @@ bash reinstall.sh reset
 - `--ip IP/CIDR` 指定 IP 和掩码，例如 `--ip 192.168.1.2/24` 或 `--ip 2001:db8::2/64`。IPv4 和 IPv6 各可指定一个，需搭配同协议的 `--gateway`。指定后安装环境和新系统都使用静态 IP
 - `--gateway GATEWAY` 指定网关，例如 `--gateway 192.168.1.1` 或 `--gateway fe80::1`
 - `--dns DNS` 指定 DNS，可单独使用，此时仍然使用 DHCP 获取 IP。IPv4 和 IPv6 各最多两个，例如 `--dns 1.1.1.1 --dns 8.8.8.8`
+- `--static` 把当前系统的 IPv4/IPv6 地址和网关直接配置成静态 IP，无需手动填写 `--ip`。适用于 DHCP 不稳定，但当前系统的 IP 是正确的情况。可与 `--ip` 同时使用，此时该协议以 `--ip` 为准
 
 ```bash
 bash reinstall.sh debian 13 --ip 192.168.1.2/24 --gateway 192.168.1.1 --dns 1.1.1.1
+bash reinstall.sh debian 13 --static --dns 1.1.1.1
 ```
 
 > [!WARNING]

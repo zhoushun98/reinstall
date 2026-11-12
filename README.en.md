@@ -189,7 +189,7 @@ bash reinstall.sh anolis      7|8|23
 - `--ssh-port PORT` Change the SSH port
 - `--web-port PORT` Change the Web port (for log observation during installation only)
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
-- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` Set network manually, [formatted as follows](#--ip---gateway---dns)
+- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` `--static` Set network manually, [formatted as follows](#--ip---gateway---dns)
 - `--no-cloud-kernel` Avoid using cloud kernel to prevent black or glitch screens on certain machines; applicable to Debian, Ubuntu, Alpine and openSUSE.
 - `--mirror URL` Set the repository of the target system, [formatted as follows](#--mirror)
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
@@ -318,7 +318,7 @@ bash reinstall.sh alpine --hold 1
 - `--ssh-key KEY` Set up SSH login public key, [formatted as follows](#--ssh-key). When using public key, password is empty.
 - `--ssh-port PORT` Change SSH port
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
-- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` Set network manually, [formatted as follows](#--ip---gateway---dns)
+- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` `--static` Set network manually, [formatted as follows](#--ip---gateway---dns)
 
 ### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -589,7 +589,7 @@ bash reinstall.sh windows \
   - This parameter can be set multiple times to add different driver.
 - `--no-auto-drivers` Prevent the script automatically download drivers. You need to use `--add-driver` to add the missing drivers.
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
-- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` Set network manually, [formatted as follows](#--ip---gateway---dns)
+- `--ip IP/CIDR` `--gateway GATEWAY` `--dns DNS` `--static` Set network manually, [formatted as follows](#--ip---gateway---dns)
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Allow SSH connections for modifying `boot.wim`, `install.wim` or other contents before rebooting into the official Windows installation program, with the disk mounted at `/os`.
 
@@ -742,9 +742,11 @@ Parameters:
 - `--ip IP/CIDR` Set IP and netmask, e.g. `--ip 192.168.1.2/24` or `--ip 2001:db8::2/64`. One IPv4 and one IPv6 can be set, each with a `--gateway` of the same protocol. Both the installation environment and the new system will use static IP
 - `--gateway GATEWAY` Set gateway, e.g. `--gateway 192.168.1.1` or `--gateway fe80::1`
 - `--dns DNS` Set DNS. Can be used alone, in which case IP is still obtained by DHCP. Up to two each for IPv4 and IPv6, e.g. `--dns 1.1.1.1 --dns 8.8.8.8`
+- `--static` Use the IPv4/IPv6 address and gateway of the current system as static IP, without filling in `--ip`. Useful when DHCP is unstable but the current IP is correct. Can be used with `--ip`, in which case `--ip` takes priority for that protocol
 
 ```bash
 bash reinstall.sh debian 13 --ip 192.168.1.2/24 --gateway 192.168.1.1 --dns 1.1.1.1
+bash reinstall.sh debian 13 --static --dns 1.1.1.1
 ```
 
 > [!WARNING]

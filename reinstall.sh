@@ -122,6 +122,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        [--ip          IP/CIDR]     (IPv4 or IPv6, use static IP)
                        [--gateway     GATEWAY]
                        [--dns         DNS]
+                       [--static]                  (use current IPv4/IPv6 as static IP)
 
                        For Linux Only:
                        [--no-cloud-kernel]         (only for Debian/Ubuntu/Alpine/openSUSE)
@@ -4450,9 +4451,10 @@ get_ip_conf_cmd() {
     collect_netconf >&2
     is_in_china && is_in_china=true || is_in_china=false
 
-    # 用户指定了 IP 则强制使用静态 IP
-    [ -n "$custom_ipv4_addr" ] && force_static_ipv4=true || force_static_ipv4=false
-    [ -n "$custom_ipv6_addr" ] && force_static_ipv6=true || force_static_ipv6=false
+    # 用户通过 --ip 指定了 IP，或者使用了 --static，则强制使用静态 IP
+    # --static 使用的是 collect_netconf 获取到的当前系统的 IP
+    { [ -n "$custom_ipv4_addr" ] || [ "$static_ip" = 1 ]; } && force_static_ipv4=true || force_static_ipv4=false
+    { [ -n "$custom_ipv6_addr" ] || [ "$static_ip" = 1 ]; } && force_static_ipv6=true || force_static_ipv6=false
 
     sh=/initrd-network.sh
     if is_found_ipv4_netconf && is_found_ipv6_netconf && [ "$ipv4_mac" = "$ipv6_mac" ]; then
@@ -5105,7 +5107,7 @@ for o in ci installer debug minimal no-cloud-kernel no-auto-drivers allow-ping f
     allow-ping: \
     commit: \
     mirror: \
-    ip: gateway: dns: \
+    ip: gateway: dns: static \
     frpc-conf: frpc-config: \
     target-disk: \
     force-boot-mode: \
@@ -5453,6 +5455,11 @@ EOF
             error_and_exit "Invalid $1 value: $2"
         fi
         shift 2
+        ;;
+    --static)
+        # 将当前系统的 IPv4/IPv6 配置为静态 IP
+        static_ip=1
+        shift
         ;;
     --dns)
         # 逗号分隔

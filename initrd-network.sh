@@ -13,7 +13,7 @@ ipv6_addr=$4
 ipv6_gateway=$5
 is_in_china=$6
 ipv6_extra_addrs=$7
-# 用户通过 --ip 指定了 IP 时为 true
+# 用户使用 --ip 或 --static 时为 true
 force_static_ipv4=${8:-false}
 force_static_ipv6=${9:-false}
 # 用户通过 --dns 指定的 DNS，逗号分隔
@@ -597,14 +597,14 @@ if $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
     flush_ipv6_config
 fi
 
-# 用户通过 --ip 指定了 IP，删除自动获取的配置，强制使用静态
+# 用户使用 --ip 或 --static，删除自动获取的配置，强制使用静态
 if $force_static_ipv4; then
-    log "Using static IPv4 from --ip: $ipv4_addr"
+    log "Forcing static IPv4: $ipv4_addr"
     should_disable_dhcpv4=true
     flush_ipv4_config
 fi
 if $force_static_ipv6; then
-    log "Using static IPv6 from --ip: $ipv6_addr"
+    log "Forcing static IPv6: $ipv6_addr"
     should_disable_accept_ra=true
     should_disable_autoconf=true
     flush_ipv6_config
