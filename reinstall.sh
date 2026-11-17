@@ -102,6 +102,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        windows     --image-name="windows xxx yyy" --lang=xx-yy
                        windows     --image-name="windows xxx yyy" --iso="http://xxx.com/xxx.iso"
                        netboot.xyz
+                       talos
                        reset
 
        Options:        For Linux/Windows:
@@ -274,8 +275,38 @@ is_use_dd() {
     [ "$distro" = dd ]
 }
 
+cp_boot_files_to_dir() {
+    local dir=$1
+
+    cp -f /reinstall-vmlinuz "$dir"
+
+    if is_have_initrd; then
+        cp -f /reinstall-initrd "$dir"
+    fi
+
+    if is_use_firmware; then
+        cp -f /reinstall-firmware "$dir"
+    fi
+}
+
 is_boot_in_separate_partition() {
-    mount | grep -q ' on /boot type '
+    # 只有用到本地引导时才会用到此函数
+    if is_efi || is_in_windows; then
+        error_and_exit 'Should not be here'
+    fi
+
+    if false; then
+        mount | grep -q ' on /boot type ' ||
+            mount | grep -q ' on /limine type ' ||
+            mount | grep -q ' on /boot/limine type '
+    else
+        local mount_point
+        mount_point=$(get_root_of_mount_point_for_path "$target_cfg")
+        if [ -z "$mount_point" ]; then
+            error_and_exit "Mount point not found for $target_cfg"
+        fi
+        [ "$mount_point" != / ]
+    fi
 }
 
 is_os_in_btrfs() {
@@ -303,13 +334,13 @@ umount_all() {
     fi
 }
 
-cp_to_btrfs_root() {
+cp_boot_files_to_btrfs_root() {
     mount_dir=$tmp/reinstall-btrfs-root
     if ! grep -q $mount_dir /proc/mounts; then
         mkdir -p $mount_dir
         mount "$(get_os_part)" $mount_dir -t btrfs -o subvol=/
     fi
-    cp -rf "$@" "$mount_dir"
+    cp_boot_files_to_dir "$mount_dir"
 }
 
 is_host_has_ipv4_and_ipv6() {
@@ -388,8 +419,13 @@ get_function_content() {
 insert_into_file() {
     local file=$1
     local location=$2
-    local regex_to_find=$3
-    shift 3
+    if [ "$location" = head ]; then
+        # shift 3 会报错
+        shift 2
+    else
+        local regex_to_find=$3
+        shift 3
+    fi
 
     if ! [ -f "$file" ]; then
         error_and_exit "File not found: $file"
@@ -400,24 +436,33 @@ insert_into_file() {
         set -- -E
     fi
 
-    line_num=$(grep "$@" -n "$regex_to_find" "$file" | cut -d: -f1)
+    if [ "$location" = head ]; then
+        local bak
+        bak=$(mktemp)
+        if ! { cp "$file" "$bak" && cat - "$bak" >"$file"; }; then
+            error_and_exit "Failed to insert into file: $file"
+        fi
+        rm -f "$bak"
+    else
+        line_num=$(grep "$@" -n "$regex_to_find" "$file" | cut -d: -f1)
 
-    found_count=$(echo "$line_num" | wc -l)
-    if [ ! "$found_count" -eq 1 ]; then
-        return 1
+        found_count=$(echo "$line_num" | wc -l)
+        if [ ! "$found_count" -eq 1 ]; then
+            return 1
+        fi
+
+        case "$location" in
+        before) line_num=$((line_num - 1)) ;;
+        replace)
+            sed -i "${line_num}d" "$file"
+            line_num=$((line_num - 1))
+            ;;
+        after) ;;
+        *) return 1 ;;
+        esac
+
+        sed -i "${line_num}r /dev/stdin" "$file"
     fi
-
-    case "$location" in
-    before) line_num=$((line_num - 1)) ;;
-    replace)
-        sed -i "${line_num}d" "$file"
-        line_num=$((line_num - 1))
-        ;;
-    after) ;;
-    *) return 1 ;;
-    esac
-
-    sed -i "${line_num}r /dev/stdin" "$file"
 }
 
 test_url() {
@@ -1484,6 +1529,11 @@ set_var() {
     # IFS= read -r "$1" <<<"$2"
 }
 
+get_daocloud_url() {
+    local url=$1
+    echo "https://files.m.daocloud.io/$(echo "$url" | sed -E 's,^https?://,,i')"
+}
+
 setos() {
     # --mirror 只作用于目标系统，不作用于两步安装时作为中间系统的 alpine
     # 要在 local distro=$2 覆盖全局 $distro 之前判断
@@ -1520,6 +1570,26 @@ setos() {
         else
             set_osvar vmlinuz https://boot.netboot.xyz/ipxe/netboot.xyz.lkrn
         fi
+    }
+
+    setos_talos() {
+        # 全部网址都没有 ipv6
+        # https://factory.talos.dev/versions
+        # https://api.github.com/repos/siderolabs/talos/releases/latest # 有速率限制
+        # https://github.com/siderolabs/talos/releases/latest
+        # https://github.com/siderolabs/talos/releases/latest/download/sha256sum.txt
+
+        latest_tag=$(curl -i https://github.com/siderolabs/talos/releases/latest |
+            grep '^location:' | awk -F/ '{print $NF}' | tr -d '\r' | grep .)
+
+        # 无论是 github 还是 daocloud 都不支持 ipv6
+        local baseurl=https://github.com/siderolabs/talos/releases/download/$latest_tag
+        if is_in_china; then
+            baseurl=$(get_daocloud_url "$baseurl")
+        fi
+
+        set_osvar vmlinuz "$baseurl/vmlinuz-$basearch_alt"
+        set_osvar initrd "$baseurl/initramfs-$basearch_alt.xz"
     }
 
     setos_alpine() {
@@ -2008,7 +2078,7 @@ The current machine is $basearch, but it seems the ISO is for $iso_arch. Continu
     # shellcheck disable=SC2154
     setos_dd() {
         # raw 包含 vhd
-        test_url $img 'raw raw.gzip raw.xz raw.zstd raw.tar.gzip raw.tar.xz raw.tar.zstd' img_type
+        test_url $img 'raw raw.gzip raw.xz raw.zstd raw.tar.gzip raw.tar.xz raw.tar.zstd qemu' img_type
 
         if is_efi; then
             install_pkg hexdump
@@ -2405,6 +2475,7 @@ verify_os_name() {
         'windows' \
         'dd' \
         'netboot.xyz' \
+        'talos' \
         'reset'; do
         read -r ds vers <<<"$os"
         vers_=${vers//\./\\\.}
@@ -2681,7 +2752,7 @@ is_valid_ram_size() {
 check_ram() {
     ram_standard=$(
         case "$distro" in
-        netboot.xyz) echo 0 ;;
+        netboot.xyz | talos) echo 0 ;;
         alpine | debian | kali | dd) echo 256 ;;
         arch | gentoo | aosc | nixos | windows) echo 512 ;;
         redhat | centos | almalinux | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
@@ -2795,25 +2866,50 @@ is_need_boot_vmlinuz() {
     ! { is_netboot_xyz && is_efi; }
 }
 
+get_local_bootloader_type() {
+    if [ -z "$_bootloader_type" ]; then
+        find_main_disk
+
+        # 各发行版不一定自带 strings hexdump xxd od 命令
+
+        # 先装 limine 后装 grub，mbr 前部分依然有 LIMINE 标记
+        # 因此改成判断 mbr 尾部
+        if { is_have_cmd grub-mkconfig || is_have_cmd grub2-mkconfig; } &&
+            head -c 446 /dev/$xda | tail -c 64 | grep -a -Fq GRUB; then
+            _bootloader_type="grub"
+
+        elif is_have_cmd limine &&
+            head -c 446 /dev/$xda | grep -a -Fq LIMINE; then
+            _bootloader_type="limine"
+
+        elif is_have_cmd extlinux || is_have_cmd syslinux; then
+            _bootloader_type="extlinux"
+
+        else
+            error_and_exit "Unknown bootloader type."
+        fi
+    fi
+    echo "$_bootloader_type"
+}
+
 # 只有 linux bios 是用本机的 grub/extlinux
-is_use_local_grub_extlinux() {
+is_use_local_bootloader() {
     is_need_boot_vmlinuz && ! is_in_windows && ! is_efi
 }
 
 is_use_local_grub() {
-    is_use_local_grub_extlinux && is_mbr_using_grub
+    is_use_local_bootloader && [ "$local_bootloader_type" = "grub" ]
+}
+
+is_use_local_limine() {
+    is_use_local_bootloader && [ "$local_bootloader_type" = "limine" ]
 }
 
 is_use_local_extlinux() {
-    is_use_local_grub_extlinux && ! is_mbr_using_grub
+    is_use_local_bootloader && [ "$local_bootloader_type" = "extlinux" ]
 }
 
 # 软 raid 时 xda 可能不是引导盘，以后再修正
-is_mbr_using_grub() {
-    find_main_disk
-    # 各发行版不一定自带 strings hexdump xxd od 命令
-    head -c 440 /dev/$xda | grep -a -iq 'GRUB'
-}
 
 to_upper() {
     tr '[:lower:]' '[:upper:]'
@@ -3101,7 +3197,7 @@ find_main_disk() {
         ! grep -Eix '[0-9a-f-]{36}' <<<"$main_disk"; then
         error_and_exit "Disk ID is invalid: $main_disk"
     fi
-}
+} >&2
 
 is_found_ipv4_netconf() {
     [ -n "$ipv4_mac" ] && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]
@@ -3698,26 +3794,63 @@ install_grub_win() {
     fi
 }
 
-find_grub_extlinux_cfg() {
-    dir=$1
-    filename=$2
-    keyword=$3
+get_root_of_mount_point_for_path() {
+    local path="$1"
 
-    # 当 ln -s /boot/grub /boot/grub2 时
-    # find /boot/ 会自动忽略 /boot/grub2 里面的文件
-    cfgs=$(
-        # 只要 $dir 存在
-        # 无论是否找到结果，返回值都是 0
-        find $dir \
-            -type f -name $filename \
-            -exec grep -E -l "$keyword" {} \;
+    if ! [ -e "$path" ]; then
+        error_and_exit "Path not found: $path"
+    fi
+
+    df "$path" | tail -1 | awk '{print $6}' | grep .
+}
+
+find_local_bootloader_cfg() {
+    search_files=$(
+        case "$local_bootloader_type" in
+        grub)
+            echo /boot/grub/grub.cfg
+            echo /boot/grub2/grub.cfg
+            ;;
+        limine)
+            echo /boot/limine/limine.conf
+            echo /boot/limine.conf
+            echo /limine/limine.conf
+            echo /limine.conf
+            ;;
+        extlinux)
+            echo /boot/extlinux.conf
+            ;;
+        *)
+            error_and_exit "Unsupported bootloader type: $local_bootloader_type"
+            ;;
+        esac
     )
 
-    count="$(wc -l <<<"$cfgs")"
+    local found_files
+
+    local file
+    for file in $search_files; do
+        if [ -f "$file" ]; then
+            # 有的机器 /boot/grub /boot/grub2 是另一个的链接
+            file=$(readlink -f "$file")
+            if [ -z "$found_files" ]; then
+                found_files="$file"
+            else
+                found_files+=$'\n'"$file"
+            fi
+        fi
+    done
+
+    found_files=$(echo "$found_files" | sort -u)
+
+    # found_files 为空时 grep -c . 返回值不为 0
+    # 因此要加上 || true
+    count=$(grep -c . <<<"$found_files" || true)
+
     if [ "$count" -eq 1 ]; then
-        echo "$cfgs"
+        echo "$found_files"
     else
-        error_and_exit "Find $count $filename."
+        error_and_exit "Find $count config files for bootloader $local_bootloader_type"
     fi
 }
 
@@ -3795,6 +3928,12 @@ get_entry_name() {
 build_nextos_cmdline() {
     if [ $nextos_distro = alpine ]; then
         nextos_cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop"
+    elif [ $nextos_distro = talos ]; then
+        # https://docs.siderolabs.com/talos/v1.14/platform-specific-installations/bare-metal-platforms/pxe
+        nextos_cmdline=$(build_ip_cmdline)
+        nextos_cmdline+=" talos.platform=metal"
+        nextos_cmdline+=" slab_nomerge"
+        nextos_cmdline+=" pti=on"
     elif is_distro_like_debian $nextos_distro; then
         # 我们直接强制 di 优先显示到 串口，因此不需要设置分辨率
         # 设置分辨率为800*600，防止分辨率过高 ssh screen attach 后无法全部显示
@@ -3849,7 +3988,9 @@ build_cmdline() {
     fi
 
     # extra
-    build_extra_cmdline
+    if ! [ "$distro" = talos ]; then
+        build_extra_cmdline
+    fi
 
     cmdline="$nextos_cmdline $finalos_cmdline $extra_cmdline"
 }
@@ -4447,6 +4588,46 @@ create_can_use_cloud_kernel_sh() {
 EOF
 }
 
+# shellcheck disable=SC2155
+build_ip_cmdline() {
+    collect_netconf >&2
+
+    if is_in_china; then
+        local ipv4_dns1='223.5.5.5'
+        local ipv4_dns2='119.29.29.29'
+        local ipv6_dns1='2400:3200::1'
+        local ipv6_dns2='2402:4e00::'
+    else
+        local ipv4_dns1='1.1.1.1'
+        local ipv4_dns2='8.8.8.8'
+        local ipv6_dns1='2606:4700:4700::1111'
+        local ipv6_dns2='2001:4860:4860::8888'
+    fi
+
+    # https://docs.siderolabs.com/talos/v1.14/reference/kernel#ip
+    # https://www.kernel.org/doc/Documentation/filesystems/nfs/nfsroot.txt
+    # 不从 /etc/resolv.conf 获取 DNS，因为它们可能指向 127.0.0.53，例如 networkd
+
+    # ip=<client-ip>:<server-ip>:<gw-ip>:<netmask>:<hostname>:<device>:<autoconf>:<dns0-ip>:<dns1-ip>:<ntp0-ip>
+    local ip_cmdline=
+    if is_found_ipv4_netconf; then
+        local client_ip=$(echo "$ipv4_addr" | cut -d/ -f1)
+        local netmask=$(echo "$ipv4_addr" | cut -d/ -f2)
+        local device=enx$(echo $ipv4_mac | tr -d ':')
+        ip_cmdline+="ip=$client_ip::$ipv4_gateway:$netmask::$device::$ipv4_dns1:$ipv4_dns2:"
+    fi
+    if is_found_ipv6_netconf; then
+        if [ -n "$ip_cmdline" ]; then
+            ip_cmdline+=" "
+        fi
+        local client_ip=$(echo "$ipv6_addr" | cut -d/ -f1)
+        local netmask=$(echo "$ipv6_addr" | cut -d/ -f2)
+        local device=enx$(echo $ipv6_mac | tr -d ':')
+        ip_cmdline+="ip=[$client_ip]::[$ipv6_gateway]:$netmask::$device::[$ipv6_dns1]:[$ipv6_dns2]:"
+    fi
+    echo "$ip_cmdline"
+}
+
 get_ip_conf_cmd() {
     collect_netconf >&2
     is_in_china && is_in_china=true || is_in_china=false
@@ -4868,26 +5049,27 @@ init_bootloader_facts() {
     if is_in_windows; then
         # windows
         if is_efi; then
-            _grub_cfg=/cygdrive/$c/grub.cfg
+            target_cfg=/cygdrive/$c/grub.cfg
         else
-            _grub_cfg=/cygdrive/$c/grub/grub.cfg
+            target_cfg=/cygdrive/$c/grub/grub.cfg
         fi
-        target_cfg=$_grub_cfg
     else
         # linux
         if is_efi; then
             efi_dir=$(get_maybe_efi_dirs_in_linux | head -1)
-            _grub_cfg=$efi_dir/EFI/reinstall/grub.cfg
-            target_cfg=$_grub_cfg
+            target_cfg=$efi_dir/EFI/reinstall/grub.cfg
         else
-            if is_mbr_using_grub; then
+            local_bootloader_type=$(get_local_bootloader_type)
+            info "local bootloader: $local_bootloader_type"
+            case "$local_bootloader_type" in
+            grub)
                 if is_have_cmd update-grub; then
                     # alpine debian ubuntu
                     _grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)" | head -1)
                 else
                     # 找出主配置文件（含有menuentry|blscfg）
                     # 有没有可能在 efi 目录?
-                    _grub_cfg=$(find_grub_extlinux_cfg '/boot/grub*' grub.cfg 'menuentry|blscfg')
+                    _grub_cfg=$(find_local_bootloader_cfg)
                 fi
                 target_cfg=$(dirname $_grub_cfg)/custom.cfg
 
@@ -4898,25 +5080,32 @@ init_bootloader_facts() {
                 else
                     error_and_exit "grub not found"
                 fi
-            else
-                # extlinux
-                _extlinux_cfg=$(find_grub_extlinux_cfg /boot extlinux.conf LINUX)
-                target_cfg=$_extlinux_cfg
-            fi
+                ;;
+            limine)
+                target_cfg=$(find_local_bootloader_cfg)
+                ;;
+            extlinux)
+                target_cfg=$(find_local_bootloader_cfg)
+                ;;
+            esac
         fi
     fi
 }
 
 # 重新生成 grub.cfg
 # 因为有些机子例如hython debian的grub.cfg少了40_custom 41_custom 部分
-recreate_grub_or_extlinux_cfg() {
+recreate_grub_or_extlinux_cfg_if_support() {
     # 没用到原机的 grub 和 extlinux
     # 因此不需要重新生成 grub.cfg 或 extlinux.conf
     if is_efi || is_in_windows; then
         return
     fi
 
-    if is_mbr_using_grub; then
+    # 我们已经通过标记删除了 reinstall 条目
+    # 因此这里重新生成引导条目只是加分项
+
+    case "$local_bootloader_type" in
+    grub)
         info "recreate grub.cfg"
 
         # nixos 手动执行 grub-mkconfig -o /boot/grub/grub.cfg 会丢失系统启动条目
@@ -4931,14 +5120,36 @@ recreate_grub_or_extlinux_cfg() {
         elif is_have_cmd update-grub; then
             update-grub
         else
-            $grub-mkconfig -o $target_cfg
+            # target_cfg 是 custom.cfg
+            local target_cfg
+            target_cfg=$(dirname "$target_cfg")/grub.cfg
+            "$grub-mkconfig" -o "$target_cfg"
         fi
-    elif is_have_cmd update-extlinux; then
+        ;;
+    extlinux)
         # alpine 才有 update-extlinux
-        info "recreate extlinux.conf"
-        update-extlinux
-    else
-        error_and_exit "unsupported bootloader."
+        if is_have_cmd update-extlinux; then
+            info "recreate extlinux.conf"
+            update-extlinux
+        fi
+        ;;
+    limine)
+        # alpine limine 好像没有工具自动生成引导项
+        ;;
+    esac
+}
+
+remove_exist_reinstall_entry_by_mark() {
+    local target_cfg=$1
+
+    # 删除 reinstall 条目
+    if [ -f "$target_cfg" ]; then
+        sed -i "/^$BOOT_ENTEY_START_MARK/,/^$BOOT_ENTEY_END_MARK/d" "$target_cfg"
+
+        # limine 如果设置了 default_entry 且条目不存在
+        # 则不会自动回退到可用的条目
+        # 因此要删除自己的 default_entry
+        sed -i "/^default_entry: reinstall/d" "$target_cfg"
     fi
 }
 
@@ -4948,12 +5159,15 @@ remove_exist_reinstall() {
 
     rm -f /reinstall-vmlinuz /reinstall-initrd
     rm -f /boot/reinstall-vmlinuz /boot/reinstall-initrd
+    rm -f /boot/limine/reinstall-vmlinuz /boot/limine/reinstall-initrd
+    rm -f /limine/reinstall-vmlinuz /limine/reinstall-initrd
     if is_in_windows; then
         rm -f /cygdrive/$c/reinstall-vmlinuz /cygdrive/$c/reinstall-initrd
     fi
 
-    # 使用外部 grub 时，删除外部 grub.cfg
-    if ! is_use_local_grub_extlinux; then
+    # efi 和 windows 环境下，使用外部 grub
+    # 可以完全删除 grub.cfg
+    if is_efi || is_in_windows; then
         rm -f "$target_cfg"
     fi
 
@@ -4990,9 +5204,9 @@ remove_exist_reinstall() {
         else
             # bios
 
-            # 删除 reinstall 条目
+            # 通过标记删除 reinstall 条目
             if [ -f "$target_cfg" ]; then
-                sed -i "/^$BOOT_ENTEY_START_MARK/,/^$BOOT_ENTEY_END_MARK/d" "$target_cfg"
+                remove_exist_reinstall_entry_by_mark "$target_cfg"
             fi
 
             # 清除 next entry
@@ -5002,8 +5216,8 @@ remove_exist_reinstall() {
                 extlinux --clear-once "$(dirname "$target_cfg")"
             fi
 
-            # 重新创建 grub.cfg / extlinux.conf
-            recreate_grub_or_extlinux_cfg
+            # 重新创建 grub.cfg / extlinux.conf，如果系统支持
+            recreate_grub_or_extlinux_cfg_if_support
         fi
     fi
 }
@@ -5510,7 +5724,7 @@ for v in 4 6; do
 done
 
 # 用户名密码
-if ! is_netboot_xyz; then
+if ! { is_netboot_xyz || [ "$distro" = talos ]; }; then
     need_prompt_username=false
     need_prompt_password=false
     if [ -z "$username" ]; then
@@ -5583,7 +5797,7 @@ check_ram
 # el7 x86_64 >=1g
 # el7 aarch64 >=1.5g
 # el8/9/fedora 任何架构 >=2g
-if is_netboot_xyz ||
+if is_netboot_xyz || [ "$distro" = "talos" ] ||
     { ! is_use_cloud_image && {
         [ "$distro" = "alpine" ] || is_distro_like_debian ||
             { is_distro_like_redhat && [ $releasever -eq 7 ] && [ $ram_size -ge 1024 ] && [ $basearch = "x86_64" ]; } ||
@@ -5644,12 +5858,10 @@ fi
 # 将内核/netboot.xyz.lkrn 放到正确的位置
 if false && is_need_boot_vmlinuz; then
     if is_in_windows; then
-        cp -f /reinstall-vmlinuz /cygdrive/$c/
-        is_have_initrd && cp -f /reinstall-initrd /cygdrive/$c/
+        cp_boot_files_to_dir /cygdrive/$c/
     else
         if is_os_in_btrfs && is_os_in_subvol; then
-            cp_to_btrfs_root /reinstall-vmlinuz
-            is_have_initrd && cp_to_btrfs_root /reinstall-initrd
+            cp_boot_files_to_btrfs_root
         fi
     fi
 fi
@@ -5677,6 +5889,12 @@ if is_need_boot_vmlinuz; then
         # 把内核文件放在 extlinux.conf 所在的目录
         if is_use_local_extlinux && is_boot_in_separate_partition; then
             dir=
+
+        # limine + 单独的 boot/limine 分区
+        # 把内核文件放在boot/limine 分区根目录
+        elif is_use_local_limine && is_boot_in_separate_partition; then
+            dir=/
+
         else
             # 获取当前系统根目录在 btrfs 中的绝对路径
             if is_os_in_btrfs; then
@@ -5700,6 +5918,10 @@ if is_need_boot_vmlinuz; then
     if is_use_local_extlinux; then
         linux_cmd=LINUX
         initrd_cmd=INITRD
+    elif is_use_local_limine; then
+        # 用不着
+        linux_cmd=
+        initrd_cmd=
     else
         if is_netboot_xyz; then
             linux_cmd=linux16
@@ -5712,7 +5934,9 @@ if is_need_boot_vmlinuz; then
 
     # 设置 cmdlind initrds
     if ! is_netboot_xyz; then
-        find_main_disk
+        if ! [ "$distro" = talos ]; then
+            find_main_disk
+        fi
         build_cmdline
 
         initrds="$initrd"
@@ -5747,11 +5971,35 @@ EOF
         # 复制文件到 extlinux 工作目录
         if is_boot_in_separate_partition; then
             info "copying files to $extlinux_dir"
-            is_have_initrd && cp -f /reinstall-initrd $extlinux_dir
-            is_use_firmware && cp -f /reinstall-firmware $extlinux_dir
-            # 放最后，防止前两条返回非 0 而报错
-            cp -f /reinstall-vmlinuz $extlinux_dir
+            cp_boot_files_to_dir "$extlinux_dir"
         fi
+
+    elif is_use_local_limine; then
+        info limine
+        echo "$target_cfg"
+
+        # 添加条目
+        del_empty_lines <<EOF | tee -a "$target_cfg"
+$BOOT_ENTEY_START_MARK
+/$(get_entry_name)
+    protocol: linux
+    path: boot():$vmlinuz
+    $([ -n "$cmdline" ] && echo "cmdline: $cmdline")
+$(for initrd in $initrds; do echo "    module_path: boot():$initrd"; done)
+$BOOT_ENTEY_END_MARK
+EOF
+
+        # 设置默认
+        sed -i "/^default_entry:/d" "$target_cfg"
+        echo "default_entry: $(get_entry_name)" | insert_into_file "$target_cfg" head
+
+        # 复制文件到 boot/limine 分区根目录
+        if is_boot_in_separate_partition; then
+            root_dir_of_boot_part=$(get_root_of_mount_point_for_path "$target_cfg")
+            info "copying files to $root_dir_of_boot_part"
+            cp_boot_files_to_dir "$root_dir_of_boot_part"
+        fi
+
     else
         # cloudcone 从光驱的 grub 启动，再加载硬盘的 grub.cfg
         # menuentry "Grub 2" --id grub2 {
@@ -5831,7 +6079,7 @@ ssh_port=${ssh_port:-22}
 rdp_port=${rdp_port:-3389}
 web_port=${web_port:-80}
 
-if [ "$distro" = netboot.xyz ]; then
+if [ "$distro" = netboot.xyz ] || [ "$distro" = talos ]; then
     :
 elif [ "$distro" = alpine ] && [ "$hold" = 1 ]; then
     info "Alpine Live OS"
@@ -5909,6 +6157,15 @@ if [ "$distro" = netboot.xyz ]; then
     warn false "如果要取消进入，请在重启前运行 \"$reinstall_____ reset\"。"
     warn false
     warn false 'Reboot will start netboot.xyz.'
+    warn false "If you want to cancel entering, run \"$reinstall_____ reset\" before reboot."
+    warn false '**********************************'
+
+elif [ "$distro" = talos ]; then
+    warn false '********** 警告 Warning **********'
+    warn false '重启后会进入 Talos 维护模式，任何人都可连接，因此你需要尽快使用 "talosctl" 等工具连接并初始化系统'
+    warn false "如果要取消进入，请在重启前运行 \"$reinstall_____ reset\"。"
+    warn false
+    warn false 'Reboot will start Talos Maintenance Mode. Anyone can connect. So you need to connect and initialize the system using tools like "talosctl" as soon as possible.'
     warn false "If you want to cancel entering, run \"$reinstall_____ reset\" before reboot."
     warn false '**********************************'
 
