@@ -2874,8 +2874,9 @@ get_local_bootloader_type() {
 
         # 先装 limine 后装 grub，mbr 前部分依然有 LIMINE 标记
         # 因此改成判断 mbr 尾部
+        # centos 7 (grub2 2.02 beta) 的 GRUB 标记在 378 字节处，因此取尾部 80 字节
         if { is_have_cmd grub-mkconfig || is_have_cmd grub2-mkconfig; } &&
-            head -c 446 /dev/$xda | tail -c 64 | grep -a -Fq GRUB; then
+            head -c 446 /dev/$xda | tail -c 80 | grep -a -Fq GRUB; then
             _bootloader_type="grub"
 
         elif is_have_cmd limine &&
